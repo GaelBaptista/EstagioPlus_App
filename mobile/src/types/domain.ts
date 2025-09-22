@@ -1,29 +1,32 @@
 // src/types/domain.ts
+export type Category = {
+  id: number;
+  label: string;
+  icon: string; // url do svg
+};
+
 export type LocationItem = {
   id: string;
-  address: string;
-  city: string;
-  state: string;     // UF
   latitude: number;
   longitude: number;
-  distance_m?: number;
+  city: string;
+  state: string;
+  address?: string;
 };
 
 export type BenefitItem = {
-  id: string;
+  id: string;               // "phy-1" ou "onl-3"
   title: string;
-  partner_name: string;
-  category_id: number | null;
+  partner_name?: string;
   details?: string;
   discount_label?: string;
-  logo_url?: string;
   image_url?: string;
-  contact?: { phone?: string; website?: string };
+  logo_url?: string;
+  contact?: { phone?: string; website?: string; email?: string };
+  is_online: boolean;
+  category_id?: number | null;
   locations: LocationItem[];
 };
 
-export type CategoryItem = {
-  id: number;
-  label: string;
-  icon?: string; // URL (SVG ou imagem)
-};
+
+export type CategoryItem = Category; // alias simples

@@ -1,133 +1,218 @@
-import knex from "../database/connection";
+// src/controllers/CatalogController.ts
 import { Request, Response } from "express";
+import knex from "../database/connection";
+import path from "path";
+import fs from "fs";
 
-// Haversine simples (em metros)
-function distanceMeters(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const toRad = (v: number) => (v * Math.PI) / 180;
-  const R = 6371000;
-  const dLat = toRad(b.lat - a.lat);
-  const dLng = toRad(b.lng - a.lng);
-  const la1 = toRad(a.lat);
-  const la2 = toRad(b.lat);
-  const s = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(la1) * Math.cos(la2);
-  return 2 * R * Math.asin(Math.sqrt(s));
+/** Monta a base URL (http://host:port) a partir da request */
+function baseUrl(req: Request) {
+  return `${req.protocol}://${req.get("host")}`;
 }
 
-class CatalogController {
-  // GET /catalog/categories  (usa tabela "items")
-  async categories(req: Request, res: Response) {
-    const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const items = await knex("items").select("*");
-    // renomeia semanticamente para categorias
-    const categories = items.map((it: any) => ({
+/** Usa mtime do arquivo como cache-buster */
+function fileVersion(p: string) {
+  try {
+    return Math.floor(fs.statSync(p).mtimeMs);
+  } catch {
+    return 1;
+  }
+}
+
+/** ========== CATEGORIAS ========== */
+/** GET /catalog/categories  ->  [{ id, label, icon }] */
+export async function getCategories(req: Request, res: Response) {
+  const items = await knex("items").select("*");
+
+  const cats = items.map((it: any) => {
+    const p = path.resolve(__dirname, "..", "uploads", it.image);
+    const v = fileVersion(p);
+    return {
       id: it.id,
       label: it.title,
-      icon: `${baseUrl}/uploads/${it.image}`, // reaproveita svgs existentes
-    }));
-    return res.json(categories);
-  }
-
-  // GET /catalog/benefits?state=UF&city=Nome&lat&lng&radius&categoryId
-  async benefits(req: Request, res: Response) {
-    const lat = req.query.lat ? Number(req.query.lat) : undefined;
-    const lng = req.query.lng ? Number(req.query.lng) : undefined;
-    const radius = req.query.radius ? Number(req.query.radius) : 80000; // 80km default p/ teste
-    const categoryId = req.query.categoryId ? Number(req.query.categoryId) : undefined;
-    const state = (req.query.state as string) || (req.query.uf as string) || undefined;
-    const city = (req.query.city as string) || undefined;
-
-    // base: points (locais) + (opcional) filtro por categoria via point_items
-    let query = knex("points").select("points.*");
-
-    if (categoryId) {
-      query = query
-        .join("point_items", "points.id", "=", "point_items.point_id")
-        .where("point_items.item_id", categoryId)
-        .distinct();
-    }
-
-    if (state) query = query.where("uf", state);
-    if (city) query = query.where("city", city);
-
-    const points = await query;
-
-    const benefits = points
-      .map((p: any) => {
-        const benefit = {
-          id: String(p.id),
-          title: p.name, // título do benefício (usa 'name' do ponto/parceiro)
-          partner_name: p.name,
-          category_id: categoryId ?? null, // se quiser pode preencher depois
-          details: undefined,
-          discount_label: undefined,
-          logo_url: undefined,
-          image_url: p.image, // no Ecoleta já usa URL absoluta
-          contact: { phone: p.whatsapp, website: undefined },
-          locations: [
-            {
-              id: `loc-${p.id}`,
-              address: "Endereço informado no app", // não temos na tabela — mantemos placeholder
-              city: p.city,
-              state: p.uf,
-              latitude: Number(p.latitude),
-              longitude: Number(p.longitude),
-              // distance_m: calculado abaixo se lat/lng vierem
-            },
-          ],
-        };
-
-        if (lat !== undefined && lng !== undefined) {
-          const d = distanceMeters(
-            { lat, lng },
-            { lat: Number(p.latitude), lng: Number(p.longitude) }
-          );
-          (benefit.locations[0] as any).distance_m = d;
-          if (radius && d > radius) return null; // fora do raio
-        }
-
-        return benefit;
-      })
-      .filter(Boolean);
-
-    // ordenar por distância se houver
-    if (lat !== undefined && lng !== undefined) {
-      (benefits as any).sort(
-        (a: any, b: any) => (a.locations[0].distance_m || 0) - (b.locations[0].distance_m || 0)
-      );
-    }
-
-    return res.json(benefits);
-  }
-
-  // (opcional) GET /catalog/benefits/:id
-  async benefitById(req: Request, res: Response) {
-    const id = Number(req.params.id);
-    const p = await knex("points").where("id", id).first();
-    if (!p) return res.status(404).json({ error: "not found" });
-
-    const benefit = {
-      id: String(p.id),
-      title: p.name,
-      partner_name: p.name,
-      category_id: null,
-      details: undefined,
-      discount_label: undefined,
-      logo_url: undefined,
-      image_url: p.image,
-      contact: { phone: p.whatsapp, website: undefined },
-      locations: [
-        {
-          id: `loc-${p.id}`,
-          address: "Endereço informado no app",
-          city: p.city,
-          state: p.uf,
-          latitude: Number(p.latitude),
-          longitude: Number(p.longitude),
-        },
-      ],
+      icon: `${baseUrl(req)}/uploads/${it.image}?v=${v}`,
     };
-    return res.json(benefit);
-  }
+  });
+
+  return res.json(cats);
 }
 
-export default CatalogController;
+/** ========== HELPERS ONLINE ========== */
+function onlineIsAvailable(row: any, state?: string, city?: string) {
+  const scope = String(row.availability_scope || "NATIONAL").toUpperCase();
+
+  if (scope === "NATIONAL") return true;
+
+  if (scope === "STATE") {
+    if (!state) return false;
+    const states = String(row.states || "")
+      .split(",")
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+    return states.includes(state.toUpperCase());
+  }
+
+  if (scope === "CITY") {
+    if (!state || !city) return false;
+    const pairs = String(row.cities || "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean); // "Fortaleza:CE"
+    const target = `${city}:${state}`.toUpperCase();
+    return pairs.some((p) => p.toUpperCase() === target);
+  }
+
+  return false;
+}
+
+/** Normaliza um row de POINT para o formato de benefício */
+function mapPointToBenefit(origin: string, p: any) {
+  return {
+    id: `phy-${p.id}`,
+    title: p.name,
+    partner_name: p.name,
+    category_id: p.category_id || null,
+    details: undefined,
+    discount_label: undefined,
+    logo_url: `${origin}/uploads/${(p.image || "").split("/").pop()}`,
+    image_url:
+      p.image && String(p.image).startsWith("http")
+        ? p.image
+        : `${origin}/uploads/${p.image || ""}`,
+    contact: { phone: p.whatsapp, website: undefined },
+    is_online: false,
+    availability_scope: "CITY",
+    locations: [
+      {
+        id: `loc-${p.id}`,
+        address: `${p.city}`,
+        city: p.city,
+        state: p.uf,
+        latitude: Number(p.latitude),
+        longitude: Number(p.longitude),
+      },
+    ],
+  };
+}
+
+/** Normaliza um row de ONLINE para o formato de benefício */
+function mapOnlineRowToBenefit(origin: string, r: any) {
+  return {
+    id: `onl-${r.id}`,
+    title: r.title,
+    partner_name: r.partner_name,
+    category_id: r.category_id || null,
+    details: r.details || undefined,
+    discount_label: r.discount_label || undefined,
+    logo_url: r.logo ? `${origin}/uploads/${r.logo}` : undefined,
+    image_url: r.image ? `${origin}/uploads/${r.image}` : undefined,
+    contact: { phone: r.phone || undefined, website: r.website || undefined },
+    is_online: true,
+    availability_scope: r.availability_scope || "NATIONAL",
+    locations: [] as any[],
+  };
+}
+
+/** ========== BENEFÍCIOS (lista) ========== */
+/**
+ * GET /catalog/benefits
+ * Query:
+ *  - state, city
+ *  - categoryId (número)
+ *  - onlyOnline=true|false
+ *  - onlyPhysical=true|false
+ */
+export async function getBenefits(req: Request, res: Response) {
+  const { state, city, categoryId, onlyOnline, onlyPhysical } = req.query as any;
+
+  const cat = categoryId ? Number(categoryId) : undefined;
+  const fo = String(onlyOnline || "").toLowerCase() === "true";
+  const fp = String(onlyPhysical || "").toLowerCase() === "true";
+
+  const origin = baseUrl(req);
+  const out: any[] = [];
+
+  // FÍSICOS (points)
+  if (!fo) {
+    const q = knex("points")
+      .join("point_items", "points.id", "=", "point_items.point_id")
+      .join("items", "items.id", "=", "point_items.item_id")
+      .modify((qb) => {
+        if (city) qb.where("points.city", String(city));
+        if (state) qb.where("points.uf", String(state));
+        if (cat) qb.where("items.id", cat); // filtro por categoria
+      })
+      .distinct("points.*", "items.id as category_id", "items.title as category_title");
+
+    const points = await q;
+    for (const p of points) {
+      out.push(mapPointToBenefit(origin, p));
+    }
+  }
+
+  // ONLINE (online_benefits)
+  if (!fp) {
+    const q2 = knex("online_benefits").select("*");
+    if (cat) q2.where("category_id", cat);
+    const rows = await q2;
+
+    for (const r of rows) {
+      if (!onlineIsAvailable(r, state, city)) continue;
+      out.push(mapOnlineRowToBenefit(origin, r));
+    }
+  }
+
+  return res.json(out);
+}
+
+/** ========== BENEFÍCIO POR ID ========== */
+/**
+ * GET /catalog/benefits/:id
+ * Aceita ids no formato:
+ *  - phy-<id do point>
+ *  - onl-<id do online_benefits>
+ */
+export async function getBenefitById(req: Request, res: Response) {
+  const { id } = req.params as { id: string };
+  const origin = baseUrl(req);
+
+  if (!id || typeof id !== "string") {
+    return res.status(400).json({ message: "ID inválido" });
+  }
+
+  // FÍSICO
+  if (id.startsWith("phy-")) {
+    const rawId = Number(id.replace("phy-", ""));
+    if (!Number.isFinite(rawId)) {
+      return res.status(400).json({ message: "ID físico inválido" });
+    }
+
+    // Busca o point + uma categoria associada (se houver)
+    const p = await knex("points")
+      .leftJoin("point_items", "points.id", "=", "point_items.point_id")
+      .leftJoin("items", "items.id", "=", "point_items.item_id")
+      .where("points.id", rawId)
+      .select("points.*", "items.id as category_id")
+      .first();
+
+    if (!p) return res.status(404).json({ message: "Benefício físico não encontrado" });
+
+    const benefit = mapPointToBenefit(origin, p);
+    return res.json(benefit);
+  }
+
+  // ONLINE
+  if (id.startsWith("onl-")) {
+    const rawId = Number(id.replace("onl-", ""));
+    if (!Number.isFinite(rawId)) {
+      return res.status(400).json({ message: "ID online inválido" });
+    }
+
+    const r = await knex("online_benefits").where("id", rawId).first();
+    if (!r) return res.status(404).json({ message: "Benefício online não encontrado" });
+
+    const benefit = mapOnlineRowToBenefit(origin, r);
+    return res.json(benefit);
+  }
+
+  return res.status(400).json({ message: "Formato de ID desconhecido" });
+}

@@ -2,20 +2,27 @@ import { Router } from "express";
 
 import PointsController from "./controllers/PointsController";
 import ItemsController from "./controllers/ItemsController";
-import CatalogController from "./controllers/CatalogController";
+import { getCategories, getBenefits, getBenefitById } from "./controllers/CatalogController";
+import { login, register } from "./controllers/AuthController";
+// import { ensureAuth } from "./middlewares/ensureAuth";
 
 const routes = Router();
 
 const pointsController = new PointsController();
 const itemsController = new ItemsController();
-const catalogController = new CatalogController();
 
-// Rotas novas (Estágio Plus)
-routes.get("/catalog/categories", (req, res) => catalogController.categories(req, res));
-routes.get("/catalog/benefits", (req, res) => catalogController.benefits(req, res));
-routes.get("/catalog/benefits/:id", (req, res) => catalogController.benefitById(req, res));
+// Auth
+routes.post("/auth/register", register);
+routes.post("/auth/login", login);
 
-// Rotas antigas do Ecoleta (mantidas)
+// Catálogo (público ou protegido, como preferir)
+// routes.get("/catalog/categories", ensureAuth, getCategories);
+routes.get("/catalog/categories", getCategories);
+// routes.get("/catalog/benefits", ensureAuth, getBenefits);
+routes.get("/catalog/benefits", getBenefits);
+routes.get("/catalog/benefits/:id", getBenefitById);
+
+// Legado Ecoleta
 routes.get("/items", (req, res) => itemsController.index(req, res));
 routes.post("/points", (req, res) => pointsController.create(req, res));
 routes.get("/points", (req, res) => pointsController.index(req, res));
