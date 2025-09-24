@@ -1,13 +1,13 @@
 import { Knex } from "knex";
 
 export async function up(knex: Knex) {
-  await knex.schema.createTable("items", (table) => {
+  return knex.schema.createTable("items", (table) => {
     table.increments("id").primary();
-    table.string("image").notNullable();
     table.string("title").notNullable();
+    table.string("image").notNullable(); // nome do arquivo .svg
   });
 }
 
 export async function down(knex: Knex) {
-  return await knex.schema.dropTable("items");
+  return knex.schema.dropTable("items");
 }

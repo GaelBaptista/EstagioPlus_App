@@ -1,32 +1,42 @@
 // src/types/domain.ts
-export type Category = {
+export type CategoryItem = {
   id: number;
   label: string;
-  icon: string; // url do svg
+  icon?: string; // pode vir do backend (svg/png) — opcional
 };
 
 export type LocationItem = {
   id: string;
-  latitude: number;
-  longitude: number;
-  city: string;
-  state: string;
   address?: string;
+  city?: string;
+  state?: string;
+  latitude?: number;
+  longitude?: number;
 };
 
 export type BenefitItem = {
-  id: string;               // "phy-1" ou "onl-3"
-  title: string;
+  id: string; // "phy-<id>" ou "onl-<id>"
+  title?: string;
   partner_name?: string;
+  category_id?: number | null;
   details?: string;
   discount_label?: string;
-  image_url?: string;
   logo_url?: string;
-  contact?: { phone?: string; website?: string; email?: string };
+  image_url?: string;
+  contact?: { phone?: string; website?: string };
   is_online: boolean;
-  category_id?: number | null;
-  locations: LocationItem[];
+  availability_scope?: "NATIONAL" | "STATE" | "CITY";
+  locations?: LocationItem[];
 };
 
-
-export type CategoryItem = Category; // alias simples
+export type User = {
+  id?: number;
+  name: string;
+  email: string;
+  cpf?: string;
+  points?: number;
+  nextLevel?: number;
+  level?: string;
+  avatar_url?: string | null;
+  token?: string;
+};

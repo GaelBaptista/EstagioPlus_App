@@ -1,7 +1,12 @@
+// src/@types/navigation.d.ts
+import type { BenefitItem, LocationItem } from "../types/domain";
+
 export type RootStackParamList = {
-  Login: undefined;          // mude para undefined se não usa params
-  Home: undefined;
+  Login: undefined;
+  ChooseLocation: undefined;
+  HomeLoyalty: undefined;
   Points: { uf: string; city: string };
-  Details: { benefit?: any; location?: any };
   Results: { state: string; city: string; categoryId?: number };
+  Details: { benefit: BenefitItem; location?: LocationItem };
+   Wallet: undefined;
 };

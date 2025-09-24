@@ -1,171 +1,104 @@
-// src/pages/Detail/index.tsx
 import React from "react";
-import {
-  Image,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  SafeAreaView,
-  Linking,
-  Alert,
-} from "react-native";
-import { Feather as Icon, FontAwesome } from "@expo/vector-icons";
-import {
-  useNavigation,
-  useRoute,
-  type RouteProp,
-  type NavigationProp,
-} from "@react-navigation/native";
+import { Image, StyleSheet, Text, TouchableOpacity, View, SafeAreaView, Linking, Alert, ScrollView } from "react-native";
+import { Feather as Icon } from "@expo/vector-icons";
+import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "../../@types/navigation";
 import type { BenefitItem, LocationItem } from "../../types/domain";
-import { RectButton } from "react-native-gesture-handler";
 import colors from "../../theme/colors";
 
 type R = RouteProp<RootStackParamList, "Details">;
 
 const Details = () => {
-  const navigation = useNavigation<NavigationProp<RootStackParamList>>();
+  const nav = useNavigation<NavigationProp<RootStackParamList>>();
   const { params } = useRoute<R>();
 
-  // ——— Discriminação do union ———
-  let benefit: BenefitItem | undefined;
-  let location: LocationItem | undefined;
-
-  if ("benefit" in params) {
-    benefit = params.benefit as BenefitItem;
-    location =
-      (params.location as LocationItem | undefined) ||
-      benefit?.locations?.[0];
-  } else if ("point_id" in params) {
-    // fluxo legado (se não usar mais, pode só voltar)
-    // navigation.goBack();
-    benefit = undefined;
-  }
+  const benefit = params?.benefit as BenefitItem | undefined;
+  const location = (params?.location as LocationItem | undefined) || benefit?.locations?.[0];
 
   if (!benefit) {
     return (
-      <SafeAreaView
-        style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-      >
+      <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
         <Text>Não foi possível carregar o benefício.</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={{ color: colors.primary, marginTop: 8 }}>Voltar</Text>
-        </TouchableOpacity>
+        <TouchableOpacity onPress={() => nav.goBack()}><Text style={{ color: colors.primary, fontWeight: "800" }}>Voltar</Text></TouchableOpacity>
       </SafeAreaView>
     );
   }
 
-  const b = benefit;
-  const img = b.image_url || b.logo_url || "https://placehold.co/600x220/png";
+  const img = benefit.image_url || benefit.logo_url || "https://placehold.co/600x220/png";
 
-  function openMail() {
-    const email = b.contact?.email || "contato@estagioplus.example";
-    Linking.openURL(
-      `mailto:${email}?subject=${encodeURIComponent("Interesse no benefício")}`
-    ).catch(() => Alert.alert("Erro", "Não foi possível abrir o e-mail"));
-  }
-
-  function openWhats() {
-    const phone = b.contact?.phone || "+5585999990000";
-    const url = `https://wa.me/${phone.replace(/\D/g, "")}`;
-    Linking.openURL(url).catch(() =>
-      Alert.alert("Erro", "Não foi possível abrir o WhatsApp")
+  const openMail = () => {
+    const email = "contato@estagioplus.example";
+    Linking.openURL(`mailto:${email}?subject=${encodeURIComponent("Interesse no benefício")}`).catch(() =>
+      Alert.alert("Erro", "Não foi possível abrir o e-mail")
     );
-  }
+  };
+
+  const openWhats = () => {
+    const phone = benefit.contact?.phone || "+5585999990000";
+    const p = phone.replace(/\D/g, "");
+    Linking.openURL(`https://wa.me/${p}`).catch(() => Alert.alert("Erro", "Não foi possível abrir o WhatsApp"));
+  };
+
+  const openSite = () => {
+    const url = benefit.contact?.website;
+    if (url) Linking.openURL(url).catch(() => Alert.alert("Erro", "Não foi possível abrir o site"));
+  };
 
   return (
     <SafeAreaView style={{ flex: 1 }}>
-      <View style={styles.container}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" color={colors.primary} />
+      <View style={s.header}>
+        <TouchableOpacity onPress={() => nav.goBack()}>
+          <Icon name="arrow-left" color={colors.primary} size={22} />
         </TouchableOpacity>
+        <Text style={s.headerTitle}>Detalhes</Text>
+        <View style={{ width: 22 }} />
+      </View>
 
-        <Image style={styles.pointImage} source={{ uri: img }} />
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+        <Image source={{ uri: img }} style={s.cover} />
+        <Text style={s.title}>{benefit.title || benefit.partner_name}</Text>
+        {!!benefit.discount_label && <Text style={s.badge}>{benefit.discount_label}</Text>}
+        {!!benefit.details && <Text style={s.desc}>{benefit.details}</Text>}
 
-        <Text style={styles.pointName}>{b.title || b.partner_name}</Text>
-        {!!b.details && <Text style={styles.pointItems}>{b.details}</Text>}
-
-        {!!location && (
-          <View style={styles.address}>
-            <Text style={styles.addressTitle}>Endereço</Text>
-            <Text style={styles.addressContent}>
-              {location.address || `${location.city}/${location.state}`}
+        {location && (
+          <View style={s.block}>
+            <Text style={s.blockTitle}>Endereço</Text>
+            <Text style={s.blockBody}>
+              {location.address ? `${location.address} — ` : ""}
+              {location.city}/{location.state}
             </Text>
           </View>
         )}
-      </View>
 
-      <View style={styles.footer}>
-        <RectButton style={styles.button} onPress={openWhats}>
-          <FontAwesome name="whatsapp" size={20} color="#FFF" />
-          <Text style={styles.buttonText}>Whatsapp</Text>
-        </RectButton>
-        <RectButton style={styles.button} onPress={openMail}>
-          <Icon name="mail" size={20} color="#FFF" />
-          <Text style={styles.buttonText}>Email</Text>
-        </RectButton>
-      </View>
+        <View style={s.actions}>
+          {benefit.contact?.phone && (
+            <TouchableOpacity style={s.btn} onPress={openWhats}><Text style={s.btnText}>WhatsApp</Text></TouchableOpacity>
+          )}
+          {benefit.contact?.website && (
+            <TouchableOpacity style={s.btn} onPress={openSite}><Text style={s.btnText}>Abrir site</Text></TouchableOpacity>
+          )}
+          <TouchableOpacity style={[s.btn, s.btnGhost]} onPress={openMail}><Text style={[s.btnText, s.btnGhostText]}>Email</Text></TouchableOpacity>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 32, paddingTop: 20 },
-  pointImage: {
-    width: "100%",
-    height: 140,
-    resizeMode: "cover",
-    borderRadius: 12,
-    marginTop: 24,
-  },
-  pointName: {
-    color: colors.textTitle,
-    fontSize: 24,
-    fontFamily: "Ubuntu_700Bold",
-    marginTop: 16,
-  },
-  pointItems: {
-    color: colors.textBody,
-    fontFamily: "Roboto_400Regular",
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 6,
-  },
-  address: { marginTop: 18 },
-  addressTitle: {
-    color: colors.textTitle,
-    fontFamily: "Roboto_500Medium",
-    fontSize: 16,
-  },
-  addressContent: {
-    color: colors.textBody,
-    fontFamily: "Roboto_400Regular",
-    marginTop: 6,
-  },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderColor: "#DDD",
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  button: {
-    width: "48%",
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    height: 52,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  buttonText: {
-    marginLeft: 8,
-    color: "#FFF",
-    fontSize: 16,
-    fontFamily: "Roboto_500Medium",
-  },
+const s = StyleSheet.create({
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingTop: 10 },
+  headerTitle: { fontWeight: "900", color: colors.textTitle },
+  cover: { width: "100%", height: 160, borderRadius: 12, marginTop: 10 },
+  title: { fontSize: 20, fontWeight: "900", color: colors.textTitle, marginTop: 12 },
+  badge: { color: colors.primary, fontWeight: "700", marginTop: 2 },
+  desc: { color: colors.textBody, marginTop: 8 },
+  block: { marginTop: 12 },
+  blockTitle: { color: colors.textTitle, fontWeight: "900" },
+  blockBody: { color: colors.textBody, marginTop: 4 },
+  actions: { flexDirection: "row", gap: 8, marginTop: 16, flexWrap: "wrap" },
+  btn: { backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 },
+  btnText: { color: "#fff", fontWeight: "800" },
+  btnGhost: { backgroundColor: colors.primarySoft },
+  btnGhostText: { color: colors.primary },
 });
 
 export default Details;

@@ -96,6 +96,11 @@ function mapPointToBenefit(origin: string, p: any) {
 
 /** Normaliza um row de ONLINE para o formato de benefício */
 function mapOnlineRowToBenefit(origin: string, r: any) {
+  const toUrl = (name?: string) => {
+    if (!name) return undefined;
+    return name.startsWith("http") ? name : `${origin}/uploads/${name}`;
+  };
+
   return {
     id: `onl-${r.id}`,
     title: r.title,
@@ -103,8 +108,8 @@ function mapOnlineRowToBenefit(origin: string, r: any) {
     category_id: r.category_id || null,
     details: r.details || undefined,
     discount_label: r.discount_label || undefined,
-    logo_url: r.logo ? `${origin}/uploads/${r.logo}` : undefined,
-    image_url: r.image ? `${origin}/uploads/${r.image}` : undefined,
+    logo_url: toUrl(r.logo),
+    image_url: toUrl(r.image),
     contact: { phone: r.phone || undefined, website: r.website || undefined },
     is_online: true,
     availability_scope: r.availability_scope || "NATIONAL",
@@ -215,4 +220,38 @@ export async function getBenefitById(req: Request, res: Response) {
   }
 
   return res.status(400).json({ message: "Formato de ID desconhecido" });
+}
+
+/** ========== RECOMENDADOS (SEM MOCK, SÓ BANCO) ========== */
+/**
+ * GET /catalog/recommended?state=CE&city=Pacajus&limit=8
+ * Retorna APENAS benefícios existentes no banco.
+ * Aqui destacamos, por exemplo:
+ *  - "Minicursos IGT" (Educação)
+ *  - "Atendimento Psicológico Online" (Eliene Duarte) (Saúde)
+ * Ajuste os termos se usar títulos/nomes diferentes no seed.
+ */
+export async function getRecommended(req: Request, res: Response) {
+  const { state, city, limit } = req.query as any;
+  const origin = baseUrl(req);
+
+  // Busca estritamente por esses benefícios reais do seed
+  const rows = await knex("online_benefits")
+    .where(function () {
+      this.whereLike("title", "%Minicursos IGT%")
+        .orWhereLike("title", "%IGT%")
+        .orWhereLike("partner_name", "%IGT%");
+    })
+    .orWhere(function () {
+      this.whereLike("title", "%Psicol%")
+        .orWhereLike("partner_name", "%Eliene Duarte%");
+    })
+    .select("*");
+
+  const picked = rows
+    .filter((r) => onlineIsAvailable(r, state, city))
+    .map((r) => mapOnlineRowToBenefit(origin, r));
+
+  const lim = Number(limit || 8);
+  return res.json(picked.slice(0, Math.max(0, lim)));
 }

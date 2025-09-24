@@ -1,19 +1,22 @@
+// src/middlewares/ensureAuth.ts
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { JwtPayload } from "jsonwebtoken";
 
-const SECRET = process.env.JWT_SECRET || "dev_secret_estagioplus";
-
-export function ensureAuth(req: Request, res: Response, next: NextFunction) {
+export default function ensureAuth(req: Request, res: Response, next: NextFunction) {
   const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: "Token ausente" });
+  if (!auth) return res.status(401).json({ message: "Token ausente" });
 
-  const [, token] = auth.split(" ");
+  const [scheme, token] = auth.split(" ");
+  if (scheme !== "Bearer" || !token) return res.status(401).json({ message: "Token inválido" });
+
   try {
-    const decoded = jwt.verify(token, SECRET) as { id: number; email: string };
-    // você pode anexar no req se quiser:
-    (req as any).user = decoded;
+    const secret = process.env.JWT_SECRET || "dev-secret";
+    const decoded = jwt.verify(token, secret) as JwtPayload;
+    // usamos o subject (sub) como id
+    (req as any).userId = decoded.sub ? Number(decoded.sub) : undefined;
+    if (!(req as any).userId) return res.status(401).json({ message: "Token inválido" });
     return next();
   } catch {
-    return res.status(401).json({ error: "Token inválido" });
+    return res.status(401).json({ message: "Token inválido" });
   }
 }

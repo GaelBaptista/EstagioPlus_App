@@ -1,152 +1,243 @@
-// src/pages/Results/index.tsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Linking,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useNavigation, useRoute, type RouteProp, type NavigationProp } from "@react-navigation/native";
-import colors from "../../theme/colors";
-import api from "../../services/api";
+import { Feather as Icon } from "@expo/vector-icons";
+import { useNavigation, useRoute, type NavigationProp, type RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "../../@types/navigation";
-import type { BenefitItem } from "../../types/domain"; // ajuste se o caminho for diferente
+import type { BenefitItem, CategoryItem } from "../../types/domain";
+import api from "../../services/api";
+import colors from "../../theme/colors";
 
 type R = RouteProp<RootStackParamList, "Results">;
 
+const isSvg = (u?: string) => typeof u === "string" && u.toLowerCase().includes(".svg");
+
 const Results = () => {
   const navigation = useNavigation<NavigationProp<RootStackParamList>>();
-  const route = useRoute<R>();
-
-  // ✅ pegue os params assim:
-  const { state, city, categoryId } = route.params;
+  const { params } = useRoute<R>();
+  const state = params?.state ?? "CE";
+  const city = params?.city ?? "Pacajus";
 
   const [loading, setLoading] = useState(true);
-  const [benefits, setBenefits] = useState<BenefitItem[]>([]);
+  const [search, setSearch] = useState("");
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [items, setItems] = useState<BenefitItem[]>([]);
 
+  // categorias
   useEffect(() => {
-    setLoading(true);
-    api
-      .get<BenefitItem[]>("/catalog/benefits", {
-        params: {
-          state,
-          city,
-          categoryId,
-          // aqui você decide o que quer ver no Results:
-          // onlyPhysical: true,   // só físicos
-          // onlyOnline: true,     // só online
-        },
-      })
-      .then((r) => setBenefits(r.data || []))
-      .catch(() => Alert.alert("Ops", "Não foi possível carregar os benefícios"))
-      .finally(() => setLoading(false));
-  }, [state, city, categoryId]);
+    let mounted = true;
+    api.get<CategoryItem[]>("/catalog/categories")
+      .then((r) => mounted && setCategories(r.data || []))
+      .catch(() => mounted && setCategories([]));
+    return () => { mounted = false; };
+  }, []);
 
-  const openSite = (url?: string) => {
-    if (!url) return;
-    Linking.openURL(url).catch(() => Alert.alert("Erro", "Não foi possível abrir o site"));
-  };
+  // benefícios
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const params: any = { state, city };
+        if (selected) params.categoryId = selected;
+        const { data } = await api.get<BenefitItem[]>("/catalog/benefits", { params });
+        mounted && setItems(Array.isArray(data) ? data : []);
+      } catch {
+        mounted && setItems([]);
+      } finally {
+        mounted && setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [state, city, selected]);
 
-  const openWhats = (phone?: string) => {
+  const list = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (b) =>
+        b.title?.toLowerCase().includes(q) ||
+        b.partner_name?.toLowerCase().includes(q) ||
+        b.details?.toLowerCase().includes(q)
+    );
+  }, [items, search]);
+
+  function openWhatsSafe(phone?: string) {
     const p = (phone || "").replace(/\D/g, "");
     if (!p) return;
-    Linking.openURL(`https://wa.me/${p}`).catch(() =>
-      Alert.alert("Erro", "Não foi possível abrir o WhatsApp")
-    );
-  };
+    try {
+      void Linking.openURL(`https://wa.me/${p}`);
+    } catch {}
+  }
 
-  const goDetails = (b: BenefitItem) => navigation.navigate("Details", { benefit: b });
+  function openUrlSafe(url?: string) {
+    if (!url) return;
+    try {
+      void Linking.openURL(url);
+    } catch {}
+  }
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 8, color: colors.textBody }}>Carregando…</Text>
-      </View>
-    );
+  function goDetails(b: BenefitItem) {
+    const loc = b.locations?.[0];
+    navigation.navigate("Details", { benefit: b, location: loc });
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Resultados</Text>
-      <Text style={styles.sub}>
-        {city}/{state} {categoryId ? `• Categoria ${categoryId}` : ""}
-      </Text>
+    <View style={s.container}>
+      {/* header simples */}
+      <View style={s.header}>
+        <Text style={s.h1}>Benefícios Online</Text>
+        <Text style={s.sub}>{city}/{state}</Text>
+      </View>
 
-      <FlatList
-        data={benefits}
-        keyExtractor={(item) => String(item.id)}
-        contentContainerStyle={{ paddingVertical: 12 }}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              {!!item.logo_url && (
-                <Image source={{ uri: item.logo_url }} style={styles.logo} />
+      {/* busca */}
+      <View style={s.searchBox}>
+        <Icon name="search" size={18} color={colors.textBody} />
+        <TextInput
+          placeholder="Buscar por nome"
+          placeholderTextColor={colors.textBody}
+          value={search}
+          onChangeText={setSearch}
+          style={s.searchInput}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity onPress={() => setSearch("")}>
+            <Icon name="x" size={18} color={colors.textBody} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* chips de categoria */}
+      <View style={s.chipsRow}>
+        <TouchableOpacity
+          onPress={() => setSelected(null)}
+          style={[s.chip, selected === null && s.chipActive]}
+        >
+          <Text style={[s.chipText, selected === null && s.chipTextActive]}>Todos</Text>
+        </TouchableOpacity>
+
+        {categories.map((c) => {
+          const active = selected === c.id;
+          return (
+            <TouchableOpacity
+              key={c.id}
+              onPress={() => setSelected(active ? null : c.id)}
+              style={[s.chip, active && s.chipActive]}
+            >
+              <Text style={[s.chipText, active && s.chipTextActive]} numberOfLines={1}>
+                {c.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {/* lista */}
+      {loading ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <ActivityIndicator color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          data={list}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          renderItem={({ item: b }) => (
+            <View style={s.card}>
+              {b.image_url ? (
+                <Image source={{ uri: b.image_url }} style={s.cardImg} />
+              ) : (
+                <View style={[s.cardImg, s.cardImgAlt]} />
               )}
-              <View style={{ marginLeft: 10, flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.title || item.partner_name}</Text>
-                {!!item.discount_label && (
-                  <Text style={styles.cardBadge}>{item.discount_label}</Text>
-                )}
+
+              <View style={{ padding: 12 }}>
+                <Text style={s.cardTitle}>{b.title || b.partner_name}</Text>
+                {!!b.details && <Text style={s.cardDesc}>{b.details}</Text>}
+
+                <View style={s.row}>
+                  {!!b.contact?.phone && (
+                    <TouchableOpacity
+                      style={s.pill}
+                      onPress={() => openWhatsSafe(b.contact?.phone)}
+                    >
+                      <Icon name="message-circle" size={14} color="#fff" />
+                      <Text style={s.pillText}>WhatsApp</Text>
+                    </TouchableOpacity>
+                  )}
+                  {!!b.contact?.website && (
+                    <TouchableOpacity
+                      style={s.pill}
+                      onPress={() => openUrlSafe(b.contact?.website)}
+                    >
+                      <Icon name="external-link" size={14} color="#fff" />
+                      <Text style={s.pillText}>Abrir site</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <TouchableOpacity style={[s.pill, s.pillGhost]} onPress={() => goDetails(b)}>
+                  <Text style={[s.pillText, { color: colors.primary }]}>Ver detalhes</Text>
+                </TouchableOpacity>
               </View>
             </View>
-
-            {!!item.details && <Text style={styles.cardDesc}>{item.details}</Text>}
-
-            <View style={styles.ctaRow}>
-              {item.contact?.phone && (
-                <TouchableOpacity style={styles.cta} onPress={() => openWhats(item.contact?.phone)}>
-                  <Text style={styles.ctaText}>WhatsApp</Text>
-                </TouchableOpacity>
-              )}
-              {item.contact?.website && (
-                <TouchableOpacity style={styles.cta} onPress={() => openSite(item.contact?.website)}>
-                  <Text style={styles.ctaText}>Abrir site</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={[styles.cta, styles.ctaGhost]} onPress={() => goDetails(item)}>
-                <Text style={[styles.ctaText, styles.ctaGhostText]}>Ver detalhes</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        ListEmptyComponent={
-          <Text style={{ color: colors.textBody, textAlign: "center", marginTop: 24 }}>
-            Nenhum benefício encontrado para esse filtro.
-          </Text>
-        }
-      />
+          )}
+          ListEmptyComponent={
+            <Text style={{ color: colors.textBody, textAlign: "center", marginTop: 24 }}>
+              Nada encontrado.
+            </Text>
+          }
+        />
+      )}
     </View>
   );
 };
 
-export default Results;
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.bg },
+  header: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 },
+  h1: { fontSize: 18, fontWeight: "900", color: colors.textTitle },
+  sub: { color: colors.textBody, marginTop: 2 },
 
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: colors.bg },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
-  title: { fontSize: 22, fontWeight: "800", color: colors.textTitle },
-  sub: { color: colors.textBody, marginTop: 4, marginBottom: 8 },
-  card: {
-    backgroundColor: "#fff",
+  searchBox: {
+    marginHorizontal: 16,
+    marginTop: 10,
+    height: 44,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  logo: { width: 36, height: 36, borderRadius: 6 },
-  cardTitle: { fontWeight: "800", color: colors.textTitle },
-  cardBadge: { color: colors.primary, fontWeight: "700", marginTop: 2 },
-  cardDesc: { color: colors.textBody, marginTop: 8 },
-  ctaRow: { flexDirection: "row", marginTop: 10, flexWrap: "wrap", gap: 8 },
-  cta: { backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10 },
-  ctaText: { color: "#fff", fontWeight: "700" },
-  ctaGhost: { backgroundColor: colors.primarySoft },
-  ctaGhostText: { color: colors.primary },
+  searchInput: { flex: 1, color: colors.textTitle },
+
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, paddingHorizontal: 16, marginTop: 12 },
+  chip: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff", borderColor: colors.border, borderWidth: 1, borderRadius: 999 },
+  chipActive: { backgroundColor: colors.primary },
+  chipText: { color: colors.textTitle, fontWeight: "700" },
+  chipTextActive: { color: "#fff" },
+
+  card: { backgroundColor: "#fff", borderRadius: 14, overflow: "hidden", borderWidth: 1, borderColor: colors.border, marginBottom: 12 },
+  cardImg: { width: "100%", height: 140 },
+  cardImgAlt: { backgroundColor: "#f2f2f2" },
+  cardTitle: { fontWeight: "900", color: colors.textTitle },
+  cardDesc: { color: colors.textBody, marginTop: 6 },
+  row: { flexDirection: "row", gap: 8, marginTop: 10 },
+  pill: { flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  pillText: { color: "#fff", fontWeight: "800" },
+  pillGhost: { backgroundColor: "#FFE7D3", marginTop: 8, alignSelf: "flex-start" },
 });
+
+export default Results;

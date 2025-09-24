@@ -1,38 +1,35 @@
 import React from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
-import type { RootStackParamList } from "./@types/navigation";
 
 import Login from "./pages/Login";
-import Home from "./pages/Home";
+import ChooseLocation from "./pages/ChooseLocation";
+import HomeLoyalty from "./pages/Home";
 import Points from "./pages/Points";
 import Results from "./pages/Results";
 import Details from "./pages/Detail";
+import Wallet from "./pages/Wallet";
 
-const AppStack = createStackNavigator<RootStackParamList>();
+import type { RootStackParamList } from "./@types/navigation";
+
+const Stack = createStackNavigator<RootStackParamList>();
 
 export default function Routes() {
-  // DEBUG: se algum sair "undefined", é este o problema.
-  console.log(
-    "ROUTES components =>",
-    { Login: typeof Login, Home: typeof Home, Points: typeof Points, Results: typeof Results, Details: typeof Details }
-  );
-
   return (
     <NavigationContainer>
-      <AppStack.Navigator
-        initialRouteName="Login"   // <- troque para "Home" se ainda não tiver Login
-        screenOptions={{
-          headerShown: false,
-          cardStyle: { backgroundColor: "#f8f8fa" },
-        }}
+      <Stack.Navigator
+        initialRouteName="Login"
+        screenOptions={{ headerShown: false }}
       >
-        <AppStack.Screen name="Login" component={Login} />
-        <AppStack.Screen name="Home" component={Home} />
-        <AppStack.Screen name="Points" component={Points} />
-        <AppStack.Screen name="Results" component={Results} />
-        <AppStack.Screen name="Details" component={Details} />
-      </AppStack.Navigator>
+        {/* 👇 SOMENTE <Stack.Screen/> AQUI DENTRO */}
+        <Stack.Screen name="Login" component={Login} />
+        <Stack.Screen name="ChooseLocation" component={ChooseLocation} />
+        <Stack.Screen name="HomeLoyalty" component={HomeLoyalty} />
+        <Stack.Screen name="Points" component={Points} />
+        <Stack.Screen name="Results" component={Results} />
+        <Stack.Screen name="Details" component={Details} />
+        <Stack.Screen name="Wallet" component={Wallet} />
+      </Stack.Navigator>
     </NavigationContainer>
   );
 }
